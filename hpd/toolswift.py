@@ -20,7 +20,7 @@ def upload_and_return_url(
 	api_base = (
 		os.getenv("TOOLSWIFT_URL")
 		or os.getenv("TOOLSWIFT_API_BASE")
-		or "https://demo.api.toolswift.ca"
+		or "https://app.toolswift.ca"
 	).rstrip("/")
 	store_key = os.getenv("TOOLSWIFT_STORE_KEY")
 	bearer_token = os.getenv("TOOLSWIFT_BEARER_TOKEN")
@@ -74,7 +74,7 @@ def start_toolswift_upload_with_json(
 	api_base = (
 		os.getenv("TOOLSWIFT_URL")
 		or os.getenv("TOOLSWIFT_API_BASE")
-		or "https://demo.api.toolswift.ca"
+		or "https://app.toolswift.ca"
 	).rstrip("/")
 	store_key = os.getenv("TOOLSWIFT_STORE_KEY")
 	bearer_token = os.getenv("TOOLSWIFT_BEARER_TOKEN")
