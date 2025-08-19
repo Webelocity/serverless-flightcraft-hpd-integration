@@ -1,5 +1,5 @@
 import os
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, Dict, List, Union
 
 import httpx
 from dotenv import load_dotenv
@@ -8,10 +8,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
-def upload_and_return_url(file_path: str) -> str:
+def upload_and_return_url(
+	file_path: Optional[str] = None,
+	*,
+	filename: str = "products.json",
+	content: Optional[Union[bytes, str]] = None,
+) -> str:
 	print(f"[Toolswift] upload_and_return_url started. file_path={file_path}")
 
-	api_base = os.getenv("TOOLSWIFT_API_BASE", "https://demo.api.toolswift.ca").rstrip("/")
+
+	api_base = (
+		os.getenv("TOOLSWIFT_URL")
+		or os.getenv("TOOLSWIFT_API_BASE")
+		or "https://demo.api.toolswift.ca"
+	).rstrip("/")
 	store_key = os.getenv("TOOLSWIFT_STORE_KEY")
 	bearer_token = os.getenv("TOOLSWIFT_BEARER_TOKEN")
 	if not store_key:
@@ -24,13 +34,21 @@ def upload_and_return_url(file_path: str) -> str:
 		"x-store-key": store_key,
 		"Authorization": f"Bearer {bearer_token}",
 	}
-	filename = os.path.basename(file_path)
 
 	print(f"[Toolswift] Uploading file to {url} ...")
-	with open(file_path, "rb") as fh:
-		files = {"file": (filename, fh, "application/json")}
+	if content is not None:
+		data_bytes = content.encode("utf-8") if isinstance(content, str) else content
+		files = {"file": (filename, data_bytes, "application/json")}
 		resp = httpx.post(url, headers=headers, files=files, timeout=120.0)
 		resp.raise_for_status()
+	else:
+		if not file_path:
+			raise ValueError("Either file_path or content must be provided")
+		filename = os.path.basename(file_path)
+		with open(file_path, "rb") as fh:
+			files = {"file": (filename, fh, "application/json")}
+			resp = httpx.post(url, headers=headers, files=files, timeout=120.0)
+			resp.raise_for_status()
 
 	try:
 		payload = resp.json()
@@ -53,7 +71,11 @@ def start_toolswift_upload_with_json(
 ) -> Dict[str, Any]:
 	print(f"[Toolswift] start_toolswift_upload_with_json started. product_count={product_count}")
 
-	api_base = os.getenv("TOOLSWIFT_API_BASE", "https://app.toolswift.ca").rstrip("/")
+	api_base = (
+		os.getenv("TOOLSWIFT_URL")
+		or os.getenv("TOOLSWIFT_API_BASE")
+		or "https://demo.api.toolswift.ca"
+	).rstrip("/")
 	store_key = os.getenv("TOOLSWIFT_STORE_KEY")
 	bearer_token = os.getenv("TOOLSWIFT_BEARER_TOKEN")
 	if not store_key:

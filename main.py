@@ -1,6 +1,4 @@
 import os
-import json
-from pathlib import Path
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 
@@ -13,8 +11,7 @@ from starlette.concurrency import run_in_threadpool
 from hpd.api import get_full_catalog
 from hpd.pricing import compute_priced_catalog
 from hpd.toolswift import start_toolswift_upload_with_json, upload_and_return_url
-
-OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", "data"))
+from hpd.email import notify_integration_started, notify_error, send_email
 
 DISABLE_INTERNAL_SCHEDULER = os.getenv("DISABLE_INTERNAL_SCHEDULER", "false").lower() == "true"
 SCHEDULE_CRON = os.getenv("SCHEDULE_CRON", "")            # e.g. "0 * * * *"
@@ -28,25 +25,16 @@ if "SCHEDULE_EVERY_MINUTES" in os.environ:
 else:
 	SCHEDULE_EVERY_MINUTES = 60 if (SCHEDULE_EVERY_DAYS == 0 and SCHEDULE_EVERY_HOURS == 0) else 0
 
-# Toggle saving generated JSON files to disk (set to false in production)
-SAVE_OUTPUT_FILES = os.getenv("SAVE_OUTPUT_FILES", "false").lower() == "true"
-
 scheduler = AsyncIOScheduler()
 
-def ensure_output_dir():
-	print("[App] ensure_output_dir started.")
-	OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-	print(f"[App] ensure_output_dir finished. dir={OUTPUT_DIR}")
-
 def send_integration_started_email(total_count: int) -> None:
-	"""Placeholder email notification when integration starts.
-
-	In production, replace this with actual email sending (SMTP/API).
-	"""
+	"""Send an email notification that the integration has started."""
 	print(f"[Notify] send_integration_started_email started. total_count={total_count}")
-	recipient = os.getenv("NOTIFY_EMAIL_TO", "")
-	print(f"[Notify] Integration started for {total_count} products. To: {recipient}")
-	print("[Notify] send_integration_started_email finished.")
+	try:
+		notify_integration_started(total_count)
+		print("[Notify] Integration start email sent.")
+	except Exception as e:
+		print(f"[Notify] Failed to send start email: {e}")
 
 def run_job() -> dict:
 	print("[Job] run_job started.")
@@ -56,33 +44,8 @@ def run_job() -> dict:
 	priced = compute_priced_catalog(products)
 	print(f"[Job] Computed priced catalog. count={len(priced)}")
 
-	ensure_output_dir()
-
-	ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-	temp_file = OUTPUT_DIR / f"HPD_API_PRODUCTS_PRICED_{ts}.json"
-	print(f"[Job] Writing priced catalog to temp file: {temp_file}")
-	with open(temp_file, "w", encoding="utf-8") as f:
-		json.dump(priced, f, indent=2, ensure_ascii=False)
-	print("[Job] Temp file write complete.")
-
-	remote_location = None
-	try:
-		print("[Job] Uploading temp file to file-processor to get S3 URL ...")
-		remote_location = upload_and_return_url(str(temp_file))
-		print(f"[Job] Upload complete. remote_location={remote_location}")
-	except Exception as e:
-		print(f"[Job] Upload failed: {e}")
-		# Keep the local file for debugging if upload fails
-	else:
-		if not SAVE_OUTPUT_FILES:
-			try:
-				print(f"[Job] Deleting temp file (SAVE_OUTPUT_FILES=false): {temp_file}")
-				temp_file.unlink(missing_ok=True)
-				print("[Job] Temp file deleted.")
-			except Exception as e:
-				print(f"[Job] Failed to delete temp file: {e}")
-		else:
-			print(f"[Job] Keeping file on disk (SAVE_OUTPUT_FILES=true): {temp_file}")
+	first_product = priced[0]
+	print(f"[Job] First product: {first_product}")
 
 	# Kick off Toolswift initiation with URL location if available, else fallback to JSON
 	try:
@@ -91,23 +54,26 @@ def run_job() -> dict:
 		except Exception as e:
 			print(f"[Notify] Failed to send start email: {e}")
 
-		if remote_location:
-			print("[Job] Starting Toolswift upload (location mode) ...")
-			resp = start_toolswift_upload_with_json(priced, len(priced), location_url=remote_location)
-		else:
-			print("[Job] Starting Toolswift upload (json mode fallback) ...")
-			resp = start_toolswift_upload_with_json(priced, len(priced))
+		print("[Job] Uploading priced catalog to file-processor to obtain location ...")
+		# Upload in-memory JSON to obtain a URL location
+		import json as _json
+		location_url = upload_and_return_url(filename="priced_catalog.json", content=_json.dumps(priced))
+		print(f"[Job] Obtained location: {location_url}")
+
+		print("[Job] Starting Toolswift upload (location mode) ...")
+		resp = start_toolswift_upload_with_json(priced, len(priced), location_url=location_url)
 
 		print(f"[Job] Toolswift upload finished. response_summary={str(resp)[:500]}")
 	except Exception as e:
 		# Non-fatal: log and continue
 		print(f"[Toolswift] Failed to initiate upload: {e}")
+		try:
+			notify_error("Toolswift initiation failed", e)
+		except Exception as ne:
+			print(f"[Notify] Failed to send error email: {ne}")
 
 	result = {
 		"count": len(priced),
-		"file": str(temp_file) if (SAVE_OUTPUT_FILES and temp_file.exists()) else None,
-		"saved_files": SAVE_OUTPUT_FILES,
-		"location_url": remote_location,
 	}
 	print(f"[Job] run_job finished. result={result}")
 	return result
@@ -116,7 +82,6 @@ def run_job() -> dict:
 async def lifespan(app: FastAPI):
 	# startup
 	print("[App] lifespan startup started.")
-	ensure_output_dir()
 	if not DISABLE_INTERNAL_SCHEDULER:
 		print("[App] Configuring internal scheduler ...")
 		if SCHEDULE_CRON:
@@ -165,6 +130,30 @@ async def run_now():
 	result = await run_in_threadpool(run_job)
 	print("[API] /run-now finished.")
 	return result
+
+@app.post("/test-email")
+async def test_email(to: str = ""):
+	"""Send a test email using current SMTP settings.
+
+	- Optional query param `to` supports comma or semicolon-separated recipients.
+	- If omitted, uses NOTIFY_EMAIL_TO/CC/BCC from environment.
+	"""
+	print(f"[API] /test-email called. to={to!r}")
+	try:
+		recipients = None
+		if to:
+			recipients = [p.strip() for p in to.replace(";", ",").split(",") if p.strip()]
+		resp = await run_in_threadpool(
+			send_email,
+			"HPD Integration Test Email",
+			"This is a test email from HPD Pricing Scheduler.",
+			to=recipients,
+		)
+		print("[API] /test-email sent successfully.")
+		return {"ok": True, "summary": resp}
+	except Exception as e:
+		print(f"[API] /test-email failed: {e}")
+		return {"ok": False, "error": str(e)}
 
 @app.get("/status")
 async def status():
