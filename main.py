@@ -38,7 +38,7 @@ def send_integration_started_email(total_count: int) -> None:
 
 def run_job() -> dict:
 	print("[Job] run_job started.")
-	products = get_full_catalog()
+	products = get_full_catalog()  
 	print(f"[Job] Retrieved catalog. count={len(products)}")
 
 	priced = compute_priced_catalog(products)

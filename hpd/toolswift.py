@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+TOOLSWIFT_API_BASE = "https://demo.api.toolswift.ca"
+# TOOLSWIFT_LIVE_URL = "https://app.toolswift.ca"
 
 def upload_and_return_url(
 	file_path: Optional[str] = None,
@@ -20,7 +22,7 @@ def upload_and_return_url(
 	api_base = (
 		os.getenv("TOOLSWIFT_URL")
 		or os.getenv("TOOLSWIFT_API_BASE")
-		or "https://app.toolswift.ca"
+		or TOOLSWIFT_API_BASE
 	).rstrip("/")
 	store_key = os.getenv("TOOLSWIFT_STORE_KEY")
 	bearer_token = os.getenv("TOOLSWIFT_BEARER_TOKEN")
@@ -74,7 +76,7 @@ def start_toolswift_upload_with_json(
 	api_base = (
 		os.getenv("TOOLSWIFT_URL")
 		or os.getenv("TOOLSWIFT_API_BASE")
-		or "https://app.toolswift.ca"
+		or TOOLSWIFT_LIVE_URL
 	).rstrip("/")
 	store_key = os.getenv("TOOLSWIFT_STORE_KEY")
 	bearer_token = os.getenv("TOOLSWIFT_BEARER_TOKEN")
