@@ -1,0 +1,289 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: HPD Pricing Integration - Serverless Application
+
+Globals:
+  Function:
+    Timeout: 300
+    MemorySize: 512
+    Runtime: python3.13
+    Environment:
+      Variables:
+        # HPD API Configuration
+        HPD_APP_ID: !Ref HPDAppId
+        HPD_API_KEY: !Ref HPDAPIKey
+
+        # Email Configuration
+        SMTP_HOST: !Ref SMTPHost
+        SMTP_PORT: !Ref SMTPPort
+        SMTP_USERNAME: !Ref SMTPUsername
+        SMTP_PASSWORD: !Ref SMTPPassword
+        SMTP_USE_TLS: !Ref SMTPUseTLS
+        NOTIFY_EMAIL_FROM: !Ref NotifyEmailFrom
+        NOTIFY_EMAIL_TO: !Ref NotifyEmailTo
+
+        # Toolswift Configuration
+        TOOLSWIFT_API_BASE: !Ref ToolswiftAPIBase
+        TOOLSWIFT_STORE_KEY: !Ref ToolswiftStoreKey
+        TOOLSWIFT_BEARER_TOKEN: !Ref ToolswiftBearerToken
+
+        # S3 Configuration
+        S3_BUCKET_NAME: !Ref PricingDataBucket
+
+        # Integration Configuration
+        INTEGRATION_NAME: "HPD Pricing Integration"
+
+Parameters:
+  # HPD API Parameters
+  HPDAppId:
+    Type: String
+    Description: HPD API Application ID
+    Default: "z9L3sEsCdJES9MvXcGmA"
+    NoEcho: true
+
+  HPDAPIKey:
+    Type: String
+    Description: HPD API Key
+    Default: "Z4QujoIGpy0aW0ccF4Bd"
+    NoEcho: true
+
+  # Email Parameters
+  SMTPHost:
+    Type: String
+    Description: SMTP Host
+    Default: "smtp.gmail.com"
+
+  SMTPPort:
+    Type: String
+    Description: SMTP Port
+    Default: "587"
+
+  SMTPUsername:
+    Type: String
+    Description: SMTP Username
+    Default: "youssef@webelocity.io"
+
+  SMTPPassword:
+    Type: String
+    Description: SMTP Password
+    Default: "jgbasfhdlfyqebcw"
+    NoEcho: true
+
+  SMTPUseTLS:
+    Type: String
+    Description: Use TLS for SMTP
+    Default: "true"
+    AllowedValues: ["true", "false"]
+
+  NotifyEmailFrom:
+    Type: String
+    Description: From email address for notifications
+    Default: "youssef@webelocity.com"
+
+  NotifyEmailTo:
+    Type: String
+    Description: To email addresses for notifications (comma-separated)
+    Default: "flitecraft2023@gmail.com"
+
+  # Toolswift Parameters
+  ToolswiftAPIBase:
+    Type: String
+    Description: Toolswift API Base URL
+    Default: "http://api.toolswift.ca/"
+
+  ToolswiftStoreKey:
+    Type: String
+    Description: Toolswift Store Key
+    Default: "672c8362e10b58cbc3d7cca5"
+    NoEcho: true
+
+  ToolswiftBearerToken:
+    Type: String
+    Description: Toolswift Bearer Token
+    Default: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2NjY5MWUwODQ1NTVhYWUzYTRkNDY3ZWMiLCJlbWFpbCI6ImJvdHJvc2F6aXpib3Ryb3NAZ21haWwuY29tIiwicm9sZSI6IlN1cGVyQWRtaW4iLCJzdG9yZUlkIjoiNjY2ODEyZTQ0YTQyODZiMTE0MWRhNjNmIiwiaWF0IjoxNzUzMTU1OTE0LCJleHAiOjE3NTQ0NTE5MTR9.9ePaMQbskOLLY0jOQaZF_-AaneE9iVGvoPvqwJH0a0Q"
+    NoEcho: true
+
+  # Scheduling Parameters
+  ScheduleExpression:
+    Type: String
+    Description: EventBridge schedule expression (e.g., "rate(60 minutes)" or "cron(0 * * * ? *)")
+    Default: "rate(1 day)"
+
+Resources:
+  # S3 Bucket for storing pricing data files
+  PricingDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-pricing-data"
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldFiles
+            Status: Enabled
+            ExpirationInDays: 30
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  # Lambda Layer for shared dependencies
+  HPDDependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: !Sub "${AWS::StackName}-dependencies"
+      Description: Shared dependencies for HPD functions
+      ContentUri: layers/dependencies/
+      CompatibleRuntimes:
+        - python3.13
+    Metadata:
+      BuildMethod: python3.13
+
+  # API Gateway and Lambda Functions for HTTP endpoints
+  HPDApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  # Health Check Function
+  HealthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.health_handler
+      Layers:
+        - !Ref HPDDependenciesLayer
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HPDApi
+            Path: /health
+            Method: get
+
+  # Run Now Function (Manual trigger)
+  RunNowFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.run_now_handler
+      Timeout: 900 # 15 minutes
+      MemorySize: 1024
+      Layers:
+        - !Ref HPDDependenciesLayer
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref PricingDataBucket
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref PricingDataBucket
+        - S3WritePolicy:
+            BucketName: !Ref PricingDataBucket
+        - CloudWatchLogsFullAccess
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HPDApi
+            Path: /run-now
+            Method: post
+
+  # Test Email Function
+  TestEmailFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.test_email_handler
+      Layers:
+        - !Ref HPDDependenciesLayer
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HPDApi
+            Path: /test-email
+            Method: post
+
+  # Status Function
+  StatusFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.status_handler
+      Layers:
+        - !Ref HPDDependenciesLayer
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            RestApiId: !Ref HPDApi
+            Path: /status
+            Method: get
+
+  # Scheduled Job Function
+  ScheduledJobFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: handlers.scheduled_job_handler
+      Timeout: 900 # 15 minutes
+      MemorySize: 1024
+      Layers:
+        - !Ref HPDDependenciesLayer
+      Environment:
+        Variables:
+          S3_BUCKET_NAME: !Ref PricingDataBucket
+      Policies:
+        - S3ReadPolicy:
+            BucketName: !Ref PricingDataBucket
+        - S3WritePolicy:
+            BucketName: !Ref PricingDataBucket
+        - CloudWatchLogsFullAccess
+      Events:
+        Schedule:
+          Type: Schedule
+          Properties:
+            Schedule: !Ref ScheduleExpression
+            Description: "Scheduled HPD pricing job"
+
+  # EventBridge Rule for the scheduled job
+  ScheduledJobRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: "Schedule for HPD pricing job"
+      ScheduleExpression: !Ref ScheduleExpression
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt ScheduledJobFunction.Arn
+          Id: "ScheduledJobTarget"
+
+  # Permission for EventBridge to invoke the Lambda function
+  ScheduledJobPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ScheduledJobFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ScheduledJobRule.Arn
+
+Outputs:
+  ApiGatewayEndpoint:
+    Description: "API Gateway endpoint URL"
+    Value: !Sub "https://${HPDApi}.execute-api.${AWS::Region}.amazonaws.com/prod"
+    Export:
+      Name: !Sub "${AWS::StackName}-api-endpoint"
+
+  S3BucketName:
+    Description: "S3 bucket name for pricing data"
+    Value: !Ref PricingDataBucket
+    Export:
+      Name: !Sub "${AWS::StackName}-s3-bucket"
+
+  ScheduledJobFunctionArn:
+    Description: "ARN of the scheduled job function"
+    Value: !GetAtt ScheduledJobFunction.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-scheduled-job-arn"
