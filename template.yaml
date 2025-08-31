@@ -89,7 +89,7 @@ Parameters:
   ToolswiftAPIBase:
     Type: String
     Description: Toolswift API Base URL
-    Default: "http://api.toolswift.ca/"
+    Default: "https://api.toolswift.ca/"
 
   ToolswiftStoreKey:
     Type: String
