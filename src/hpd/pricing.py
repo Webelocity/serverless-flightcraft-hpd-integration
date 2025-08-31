@@ -39,26 +39,37 @@ def compute_final_price(product: Product) -> float:
 def compute_priced_catalog(products: List[Product]) -> List[Dict[str, object]]:
     """Return a list of dicts with PartNumber, Model, Title, FinalPrice for each product."""
 
+    # return [
+    #     {
+    #         "Category": "HPD",
+    #         "Sub Categories": [seg.strip() for seg in p.Category.split("\\") if seg.strip() ] if p.Category else [],
+    #         "Name": p.Title,
+    #         "Description": p.Description,
+    #         "Brand": p.Manufacturer,
+    #         "Final Price": compute_final_price(p),
+    #         "Product Images": [],
+    #         "Inventory": {"Online Store": int(p.Available)},
+    #         "Cost Price": p.Price,
+    #         "Retail Price": compute_final_price(p),
+    #         "Weight (lb)": 1,
+    #         "Length (inch)": 1,
+    #         "Width (inch)": 1,
+    #         "Height (inch)": 1,
+    #         "Is Active": not p.Discontinued,
+    #         "SKU": p.PartNumber,
+    #         "Variants": [],
+    #         "Tags": [p.Model],
+    #     }
+    #     for p in products
+    # ]
     return [
         {
-            "Category": "HPD",
-            "Sub Categories": [seg.strip() for seg in p.Category.split("\\") if seg.strip() ] if p.Category else [],
-            "Name": p.Title,
-            "Description": p.Description,
-            "Brand": p.Manufacturer,
             "Final Price": compute_final_price(p),
-            "Product Images": [],
             "Inventory": {"Online Store": int(p.Available)},
             "Cost Price": p.Price,
             "Retail Price": compute_final_price(p),
-            "Weight (lb)": 1,
-            "Length (inch)": 1,
-            "Width (inch)": 1,
-            "Height (inch)": 1,
             "Is Active": not p.Discontinued,
-            "SKU": p.PartNumber,
-            "Variants": [],
-            "Tags": [p.Model],
+            "SKU": p.PartNumber,   
         }
         for p in products
     ]
