@@ -69,8 +69,7 @@ def compute_priced_catalog(products: List[Product]) -> List[Dict[str, object]]:
             "Cost Price": p.Price,
             "Retail Price": compute_final_price(p),
             "Is Active": not p.Discontinued,
-            "SKU": p.PartNumber,
-            
+            "SKU": p.PartNumber,   
         }
         for p in products
     ]
