@@ -9,7 +9,7 @@ s3_bucket = ""  # SAM will create a deployment bucket
 s3_prefix = "flitecraft-hpd-integration"
 region = "us-east-1"
 capabilities = "CAPABILITY_IAM"
-parameter_overrides = "SMTPHost=\"smtp.gmail.com\" SMTPPort=\"587\" SMTPUsername=\"youssef@webelocity.io\" SMTPUseTLS=\"true\" NotifyEmailFrom=\"youssef@webelocity.com\" NotifyEmailTo=\"flitecraft2023@gmail.com\" ToolswiftAPIBase=\"http://api.toolswift.ca/\" ScheduleExpression=\"rate(7 days)\""
+parameter_overrides = "SMTPHost=\"smtp.gmail.com\" SMTPPort=\"587\" SMTPUsername=\"youssef@webelocity.io\" SMTPUseTLS=\"true\" NotifyEmailFrom=\"youssef@webelocity.com\" NotifyEmailTo=\"flitecraft2023@gmail.com\" ToolswiftAPIBase=\"https://api.toolswift.ca/\" ScheduleExpression=\"rate(7 days)\""
 confirm_changeset = true
 resolve_s3 = true
 profile = "webelocity"

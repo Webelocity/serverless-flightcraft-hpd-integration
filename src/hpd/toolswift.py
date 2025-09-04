@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TOOLSWIFT_API_BASE = "http://api.toolswift.ca/"
+TOOLSWIFT_API_BASE = "https://api.toolswift.ca/"
 # TOOLSWIFT_LIVE_URL = "https://app.toolswift.ca"
 
 def upload_and_return_url(
